@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Numerics;
+using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -64,12 +66,13 @@ namespace ClinicManagementApi.Controllers
             if (scheduleDto == null ||
                 scheduleDto.DayID <= 0 ||
                 scheduleDto.DoctorID <= 0 ||
-                scheduleDto.ClinicRoomID <= 0 ||
-                scheduleDto.CreatedByUserID <= 0)
+                scheduleDto.ClinicRoomID <= 0 )
             {
                 return BadRequest("Invalid data.");
             }
 
+            scheduleDto.CreatedByUserID = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
             clsDoctorRoomSchedule schedule =
                 new clsDoctorRoomSchedule(scheduleDto);
@@ -155,10 +158,8 @@ namespace ClinicManagementApi.Controllers
                 return BadRequest("Invalid data.");
             }
 
-
             clsDoctorRoomSchedule schedule =
                 clsDoctorRoomSchedule.FindByID(scheduleID);
-
 
             if (schedule == null)
             {
@@ -166,13 +167,23 @@ namespace ClinicManagementApi.Controllers
                     $"Schedule with ID {scheduleID} was not found.");
             }
 
+            bool noChanges =
+               schedule.DayID == scheduleDto.DayID &&
+               schedule.DoctorID == scheduleDto.DoctorID &&
+               schedule.ClinicRoomID == scheduleDto.ClinicRoomID &&
+               schedule.FromTime == scheduleDto.FromTime &&
+               schedule.ToTime == scheduleDto.ToTime;
+
+            if (noChanges)
+            {
+                return Conflict("No changes were detected.");
+            }
 
             schedule.DayID = scheduleDto.DayID;
             schedule.DoctorID = scheduleDto.DoctorID;
             schedule.ClinicRoomID = scheduleDto.ClinicRoomID;
             schedule.FromTime = scheduleDto.FromTime;
             schedule.ToTime = scheduleDto.ToTime;
-
 
             try
             {
@@ -183,10 +194,8 @@ namespace ClinicManagementApi.Controllers
                         "Failed to update doctor room schedule.");
                 }
 
-
                 schedule = clsDoctorRoomSchedule.FindByID(
                     schedule.DoctorRoomScheduleID);
-
 
                 if (schedule == null)
                 {
@@ -195,6 +204,18 @@ namespace ClinicManagementApi.Controllers
                         "Schedule was updated but could not be retrieved.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Update.ToString(),
+                    enAuditEntity.DoctorRoomSchedule.ToString(),
+                    schedule.DoctorRoomScheduleID,
+                    ipAddress);
 
                 return Ok(schedule.ToDto());
             }
@@ -229,7 +250,7 @@ namespace ClinicManagementApi.Controllers
         }
 
         [Authorize(Roles = "Admin")]
-        [HttpDelete("{scheduleID}/Deactivate", Name = "DeactivateDoctorRoomSchedule")]
+        [HttpPut("{scheduleID}/Deactivate", Name = "DeactivateDoctorRoomSchedule")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -250,6 +271,18 @@ namespace ClinicManagementApi.Controllers
                         "Failed to deactivate doctor room schedule.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Deactivate.ToString(),
+                    enAuditEntity.DoctorRoomSchedule.ToString(),
+                    scheduleID,
+                    ipAddress);
 
                 return Ok("Doctor room schedule deactivated successfully.");
             }
@@ -290,6 +323,18 @@ namespace ClinicManagementApi.Controllers
                         "Failed to activate doctor room schedule.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Activate.ToString(),
+                    enAuditEntity.DoctorRoomSchedule.ToString(),
+                    scheduleID,
+                    ipAddress);
 
                 return Ok("Doctor room schedule activated successfully.");
             }
@@ -311,5 +356,6 @@ namespace ClinicManagementApi.Controllers
                 };
             }
         }
+   
     }
 }
