@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -56,12 +58,20 @@ namespace ClinicManagementApi.Controllers
         public ActionResult<GetOperationRoomByIdDTO> AddOperationRoom(
            AddOperationRoomDTO operationRoomDto)
         {
-            if (operationRoomDto.CreatedByUserID <= 0 ||
+            if (operationRoomDto == null ||
                 string.IsNullOrWhiteSpace(operationRoomDto.RoomName) ||
-                string.IsNullOrWhiteSpace(operationRoomDto.Location))
+                string.IsNullOrWhiteSpace(operationRoomDto.Location)
+                )
             {
                 return BadRequest("Invalid Data.");
             }
+
+            // بيانات المستخدم الحالي من الـ JWT
+            int userId = int.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            // لا تعتمد على القيمة القادمة من العميل
+            operationRoomDto.CreatedByUserID = userId;
 
             operationRoomDto.RoomName = operationRoomDto.RoomName.Trim();
             operationRoomDto.Location = operationRoomDto.Location.Trim();
@@ -121,7 +131,7 @@ namespace ClinicManagementApi.Controllers
            int operationRoomID,
            UpdateOperationRoomDTO operationRoomDto)
         {
-            if (operationRoomID <= 0 ||
+            if (operationRoomID <= 0 || operationRoomDto == null ||
                 string.IsNullOrWhiteSpace(operationRoomDto.RoomName) ||
                 string.IsNullOrWhiteSpace(operationRoomDto.Location))
             {
@@ -137,6 +147,17 @@ namespace ClinicManagementApi.Controllers
             if (operationRoom == null)
             {
                 return NotFound($"Operation room with ID {operationRoomID} was not found.");
+            }
+
+            bool noChanges =
+                operationRoom.RoomName 
+                == operationRoomDto.RoomName &&
+                operationRoom.Location 
+                == operationRoomDto.Location;
+
+            if (noChanges)
+            {
+                return Conflict("No changes were detected.");
             }
 
             operationRoom.RoomName = operationRoomDto.RoomName;
@@ -160,6 +181,19 @@ namespace ClinicManagementApi.Controllers
                         StatusCodes.Status500InternalServerError,
                         "Operation room was updated but could not be retrieved.");
                 }
+
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Update.ToString(),
+                    enAuditEntity.OperationRoom.ToString(),
+                    operationRoom.OperationRoomID,
+                    ipAddress);
 
                 return Ok(operationRoom.ToDto());
             }
@@ -205,6 +239,19 @@ namespace ClinicManagementApi.Controllers
                         "Failed to delete operation room.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Delete.ToString(),
+                    enAuditEntity.OperationRoom.ToString(),
+                    operationRoomID,
+                    ipAddress);
+
                 return Ok("Operation room deleted successfully.");
             }
             catch (SqlException ex)
@@ -243,6 +290,19 @@ namespace ClinicManagementApi.Controllers
                         "Failed to restore operation room.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Restore.ToString(),
+                    enAuditEntity.OperationRoom.ToString(),
+                    operationRoomID,
+                    ipAddress);
+
                 return Ok("Operation room restored successfully.");
             }
             catch (SqlException ex)
@@ -259,5 +319,6 @@ namespace ClinicManagementApi.Controllers
                 };
             }
         }
+   
     }
 }
