@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Numerics;
 using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -189,15 +190,37 @@ namespace ClinicManagementApi.Controllers
                     $"Medical Record With ID '{medicalID}' Was Not Found.");
             }          
 
-            var userOwener = clsUser.FindByPersonID(medicalRecord.Appointment.DoctorRoomSchedul.Doctor.PersonID);
+            var userOwner = clsUser.FindByPersonID(medicalRecord.Appointment.DoctorRoomSchedul.Doctor.PersonID);
+
+            if (userOwner == null)
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    "Doctor user account was not found.");
 
             var authResult = await _authorizationService.AuthorizeAsync(
               User,
-              userOwener.UserID,
+              userOwner.UserID,
               "UserOwnerOrAdmin");
 
             if (!authResult.Succeeded)
                 return Forbid(); // 403 
+
+            bool noChanges =
+                medicalRecord.Diagnosis 
+                == medicalRecordDto.Diagnosis &&
+                medicalRecord.FollowUpDate
+                == medicalRecordDto.FollowUpDate &&
+                medicalRecord.FollowUpType
+                == (clsMedicalRecord.enFollowUpType?)medicalRecordDto.FollowUpType &&
+                medicalRecord.AdditionalNotes
+                == medicalRecordDto.AdditionalNotes &&
+                medicalRecord.OperationID 
+                == medicalRecordDto.OperationID;
+
+            if (noChanges)
+            {
+                return Conflict("No changes were detected.");
+            }
 
             medicalRecord.Diagnosis = medicalRecordDto.Diagnosis;
             medicalRecord.FollowUpDate = medicalRecordDto.FollowUpDate;
@@ -227,6 +250,19 @@ namespace ClinicManagementApi.Controllers
                         StatusCodes.Status500InternalServerError,
                         "Medical record was updated but could not be retrieved.");
                 }
+
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Update.ToString(),
+                    enAuditEntity.MedicalRecord.ToString(),
+                    medicalRecord.MedicalID,
+                    ipAddress);
 
                 return Ok(medicalRecord.ToDto());
             }
