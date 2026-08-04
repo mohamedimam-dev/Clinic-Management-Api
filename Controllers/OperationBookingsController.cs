@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.IdentityModel.Logging;
 using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -55,11 +56,17 @@ namespace ClinicManagementApi.Controllers
         {
             if (dto.MedicalID <= 0 ||
                 dto.OperationRoomID <= 0 ||
-                dto.BookingTimeID <= 0 ||
-                dto.CreatedByUserID <= 0)
+                dto.BookingTimeID <= 0)
             {
                 return BadRequest("Invalid Data.");
             }
+
+            // بيانات المستخدم الحالي من الـ JWT
+            int userId = int.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            // لا تعتمد على القيمة القادمة من العميل
+            dto.CreatedByUserID = userId;
 
             if (dto.OperationDate.Date < DateTime.Today)
                 return BadRequest("Operation date cannot be in the past.");
@@ -168,6 +175,18 @@ namespace ClinicManagementApi.Controllers
                 return BadRequest("Unable to start operation booking.");
             }
 
+            string ipAddress =
+                HttpContext.Connection
+                .RemoteIpAddress?
+                .ToString() ?? "Unknown";
+
+            clsAuditLog.LogAction(
+                userId,
+                enAuditAction.MarkAsInProgress.ToString(),
+                enAuditEntity.OperationBooking.ToString(),
+                operationBookingID,
+                ipAddress);
+
             return Ok("Operation booking has been marked as In Progress.");
         }
 
@@ -191,6 +210,19 @@ namespace ClinicManagementApi.Controllers
                         StatusCodes.Status500InternalServerError,
                         "Failed to cancel operation booking.");
                 }
+
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Cancel.ToString(),
+                    enAuditEntity.OperationBooking.ToString(),
+                    operationBookingID,
+                    ipAddress);
 
                 return Ok("Operation booking cancelled successfully.");
             }
