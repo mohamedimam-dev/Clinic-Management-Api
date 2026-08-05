@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Numerics;
+using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -62,11 +64,17 @@ namespace ClinicManagementApi.Controllers
         {
             if (operationDto == null ||
                 string.IsNullOrWhiteSpace(operationDto.OperationName) ||
-                operationDto.OperationFees < 0 ||
-                operationDto.CreatedByUserID <= 0)
+                operationDto.OperationFees < 0)
             {
                 return BadRequest("Invalid Data.");
             }
+
+            // بيانات المستخدم الحالي من الـ JWT
+            int userId = int.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            // لا تعتمد على القيمة القادمة من العميل
+            operationDto.CreatedByUserID = userId;
 
             operationDto.OperationName = operationDto.OperationName.Trim();
 
@@ -125,7 +133,7 @@ namespace ClinicManagementApi.Controllers
             int operationID,
             [FromBody] UpdateOperationDTO operationDto)
         {
-            if (operationID <= 0 ||
+            if (operationID <= 0 || operationDto == null ||
                 string.IsNullOrWhiteSpace(operationDto.OperationName) ||
                 operationDto.OperationFees < 0)
             {
@@ -139,6 +147,17 @@ namespace ClinicManagementApi.Controllers
             if (operation == null)
             {
                 return NotFound($"Operation with ID {operationID} was not found.");
+            }
+
+            bool noChanges =
+                operation.OperationName 
+                == operationDto.OperationName &&
+                operation.OperationFees 
+                == operationDto.OperationFees;
+
+            if (noChanges)
+            {
+                return Conflict("No changes were detected.");
             }
 
             operation.OperationName = operationDto.OperationName;
@@ -161,6 +180,19 @@ namespace ClinicManagementApi.Controllers
                         StatusCodes.Status500InternalServerError,
                         "Operation was updated but could not be retrieved.");
                 }
+
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Update.ToString(),
+                    enAuditEntity.Operation.ToString(),
+                    operation.OperationID,
+                    ipAddress);
 
                 return Ok(operation.ToDto());
             }
@@ -206,6 +238,19 @@ namespace ClinicManagementApi.Controllers
                         "Failed to delete operation.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Delete.ToString(),
+                    enAuditEntity.Operation.ToString(),
+                    operationID,
+                    ipAddress);
+
                 return Ok("Operation deleted successfully.");
             }
             catch (SqlException ex)
@@ -244,6 +289,19 @@ namespace ClinicManagementApi.Controllers
                         "Failed to restore operation.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Restore.ToString(),
+                    enAuditEntity.Operation.ToString(),
+                    operationID,
+                    ipAddress);
+
                 return Ok("Operation restored successfully.");
             }
             catch (SqlException ex)
@@ -262,5 +320,6 @@ namespace ClinicManagementApi.Controllers
                 };
             }
         }
+   
     }
 }
