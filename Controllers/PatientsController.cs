@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Numerics;
+using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -61,11 +63,19 @@ namespace ClinicManagementApi.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public ActionResult<GetPatientByIdDTO> AddPatient([FromBody] AddPatientDTO patientDto)
         {
-            if (patientDto.PersonID <= 0 ||
-                patientDto.PatientCreatedByUserID <= 0)
+            if (patientDto.PersonID <= 0 
+                || patientDto == null
+                )
             {
                 return BadRequest("Invalid Data.");
             }
+
+            // بيانات المستخدم الحالي من الـ JWT
+            int userId = int.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            // لا تعتمد على القيمة القادمة من العميل
+            patientDto.PatientCreatedByUserID = userId;
 
             clsPatient patient = new clsPatient(patientDto);
 
@@ -109,71 +119,7 @@ namespace ClinicManagementApi.Controllers
             }
         }
 
-        [Authorize(Roles = "Admin, Receptionist")]
-        [HttpPut("{patientID}/Update", Name = "UpdatePatient")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public ActionResult<GetPatientByIdDTO> UpdatePatient(
-           int patientID,
-           [FromBody] UpdatePatientDTO patientDto)
-        {
-            if (patientID <= 0 ||
-                patientDto.PersonID <= 0)
-            {
-                return BadRequest("Invalid Data.");
-            }
-
-            clsPatient patient = clsPatient.FindByID(patientID);
-
-            if (patient == null)
-            {
-                return NotFound($"Patient with ID {patientID} was not found.");
-            }
-
-            patient.PersonID = patientDto.PersonID;
-
-            try
-            {
-                if (!patient.Save())
-                {
-                    return StatusCode(
-                        StatusCodes.Status500InternalServerError,
-                        "Failed to update patient.");
-                }
-
-                patient = clsPatient.FindByID(patient.PatientID);
-
-                if (patient == null)
-                {
-                    return StatusCode(
-                        StatusCodes.Status500InternalServerError,
-                        "Patient was updated but could not be retrieved.");
-                }
-
-                return Ok(patient.ToDto());
-            }
-            catch (SqlException ex)
-            {
-                return ex.Number switch
-                {
-                    50001 => NotFound(ex.Message),   // Patient not found
-
-                    50002 => Conflict(ex.Message),   // Patient has appointments
-
-                    50003 => NotFound(ex.Message),   // Person not found
-
-                    50004 => Conflict(ex.Message),   // Person already assigned
-
-                    _ => StatusCode(
-                        StatusCodes.Status500InternalServerError,
-                        ex.Message)
-                };
-            }
-        }
-
+  
         [Authorize(Roles = "Admin, Receptionist")]
         [HttpDelete("{patientID}/Delete", Name = "DeletePatient")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -194,6 +140,21 @@ namespace ClinicManagementApi.Controllers
                         StatusCodes.Status500InternalServerError,
                         "Failed to delete patient.");
                 }
+
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Delete.ToString(),
+                    enAuditEntity.Patient.ToString(),
+                    patientID,
+                    ipAddress);
+
+                return Ok("Patient deleted successfully.");
 
                 return Ok("Patient deleted successfully.");
             }
@@ -233,7 +194,21 @@ namespace ClinicManagementApi.Controllers
                         "Failed to restore patient.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Restore.ToString(),
+                    enAuditEntity.Patient.ToString(),
+                    patientID,
+                    ipAddress);
+
                 return Ok("Patient restored successfully.");
+
             }
             catch (SqlException ex)
             {
@@ -249,5 +224,6 @@ namespace ClinicManagementApi.Controllers
                 };
             }
         }
+   
     }
 }
