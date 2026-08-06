@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -52,7 +54,6 @@ namespace ClinicManagementApi.Controllers
         public ActionResult<GetPaymentByIDDTO> AddPayment([FromBody] AddPaymentDTO paymentDto)
         {
             if (paymentDto.AppointmentID <= 0 ||
-                paymentDto.CreatedByUserID <= 0 ||
                 (paymentDto.OperationBookingID.HasValue &&
                  paymentDto.OperationBookingID.Value <= 0) ||
                 (paymentDto.Notes != null &&
@@ -60,6 +61,13 @@ namespace ClinicManagementApi.Controllers
             {
                 return BadRequest("Invalid Data.");
             }
+
+            // بيانات المستخدم الحالي من الـ JWT
+            int userId = int.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            // لا تعتمد على القيمة القادمة من العميل
+            paymentDto.CreatedByUserID = userId;
 
             clsPayment payment = new clsPayment(paymentDto);
 
@@ -126,6 +134,19 @@ namespace ClinicManagementApi.Controllers
                         StatusCodes.Status500InternalServerError,
                         "Failed to cancel payment.");
                 }
+
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Cancel.ToString(),
+                    enAuditEntity.Payment.ToString(),
+                    paymentID,
+                    ipAddress);
 
                 return Ok("Payment cancelled successfully.");
             }
