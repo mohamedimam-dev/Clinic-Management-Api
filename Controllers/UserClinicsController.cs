@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -59,12 +61,19 @@ namespace ClinicManagementApi.Controllers
         public ActionResult<GetUserClinicByIdDTO> AddUserClinic(
             [FromBody] AddUserClinicDTO userClinicDto)
         {
-            if (userClinicDto.UserID <= 0 ||
-                userClinicDto.ClinicID <= 0 ||
-                userClinicDto.CreatedByUserID <= 0)
+            if (userClinicDto == null ||
+                userClinicDto.UserID <= 0 ||
+                userClinicDto.ClinicID <= 0)
             {
                 return BadRequest("Invalid Data.");
             }
+
+            // بيانات المستخدم الحالي من الـ JWT
+            int userId = int.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            // لا تعتمد على القيمة القادمة من العميل
+            userClinicDto.CreatedByUserID = userId;
 
             clsUserClinic userClinic = new clsUserClinic(userClinicDto);
 
@@ -119,7 +128,7 @@ namespace ClinicManagementApi.Controllers
             int userClinicID,
             [FromBody] UpdateUserClinicDTO userClinicDto)
         {
-            if (userClinicID <= 0 ||
+            if (userClinicID <= 0 || userClinicDto == null ||
                 userClinicDto.UserID <= 0 ||
                 userClinicDto.ClinicID <= 0)
             {
@@ -130,6 +139,17 @@ namespace ClinicManagementApi.Controllers
 
             if (userClinic == null)
                 return NotFound($"User clinic with ID {userClinicID} was not found.");
+
+            bool noChanges =
+                userClinic.UserID 
+                == userClinicDto.UserID &&
+                userClinic.ClinicID 
+                == userClinicDto.ClinicID;
+
+            if (noChanges)
+            {
+                return Conflict("No changes were detected.");
+            }
 
             userClinic.UserID = userClinicDto.UserID;
             userClinic.ClinicID = userClinicDto.ClinicID;
@@ -151,6 +171,19 @@ namespace ClinicManagementApi.Controllers
                         StatusCodes.Status500InternalServerError,
                         "User clinic was not found after update.");
                 }
+
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Update.ToString(),
+                    enAuditEntity.UserClinic.ToString(),
+                    userClinic.UserClinicID,
+                    ipAddress);
 
                 return Ok(userClinic.ToDto());
             }
