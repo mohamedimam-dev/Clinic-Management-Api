@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using System.Security.Claims;
+using static ClinicManagementBusiness.clsAuditLog;
 
 namespace ClinicManagementApi.Controllers
 {
@@ -56,17 +58,24 @@ namespace ClinicManagementApi.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public ActionResult<GetPersonByIdDTO> AddPerson([FromBody] AddPersonDTO newPersonDto)
         {
-            if (string.IsNullOrWhiteSpace(newPersonDto.FirstName) ||
+            if (newPersonDto == null ||
+                string.IsNullOrWhiteSpace(newPersonDto.FirstName) ||
                 string.IsNullOrWhiteSpace(newPersonDto.SecondName) ||
                 string.IsNullOrWhiteSpace(newPersonDto.ThirdName) ||
                 string.IsNullOrWhiteSpace(newPersonDto.LastName) ||
                 string.IsNullOrWhiteSpace(newPersonDto.Phone) ||
                 string.IsNullOrWhiteSpace(newPersonDto.Email) ||
-                string.IsNullOrWhiteSpace(newPersonDto.Address) ||
-                newPersonDto.CreatedByUserID <= 0)
+                string.IsNullOrWhiteSpace(newPersonDto.Address))
             {
                 return BadRequest("Invalid Data.");
             }
+
+            // بيانات المستخدم الحالي من الـ JWT
+            int userId = int.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            // لا تعتمد على القيمة القادمة من العميل
+            newPersonDto.CreatedByUserID = userId;
 
             newPersonDto.FirstName = newPersonDto.FirstName.Trim();
             newPersonDto.SecondName = newPersonDto.SecondName.Trim();
@@ -136,7 +145,7 @@ namespace ClinicManagementApi.Controllers
            int personID,
            [FromBody] UpdatePersonDTO personDto)
         {
-            if (personID <= 0 ||
+            if (personID <= 0 || personDto == null ||
                 string.IsNullOrWhiteSpace(personDto.FirstName) ||
                 string.IsNullOrWhiteSpace(personDto.SecondName) ||
                 string.IsNullOrWhiteSpace(personDto.ThirdName) ||
@@ -173,6 +182,31 @@ namespace ClinicManagementApi.Controllers
                     $"Person with ID '{personID}' was not found.");
             }
 
+            bool noChanges =
+                person.FirstName 
+                == personDto.FirstName &&
+                person.SecondName
+                == personDto.SecondName &&
+                person.ThirdName 
+                == personDto.ThirdName &&
+                person.LastName 
+                == personDto.LastName &&
+                person.DateOfBirth 
+                == personDto.DateOfBirth &&
+                person.Gender 
+                == personDto.Gender &&
+                person.Phone 
+                == personDto.Phone &&
+                person.Email
+                == personDto.Email &&
+                person.Address 
+                == personDto.Address;
+
+            if (noChanges)
+            {
+                return Conflict("No changes were detected.");
+            }
+
             person.FirstName = personDto.FirstName;
             person.SecondName = personDto.SecondName;
             person.ThirdName = personDto.ThirdName;
@@ -201,6 +235,19 @@ namespace ClinicManagementApi.Controllers
                         "Person was updated but could not be retrieved.");
                 }
 
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Update.ToString(),
+                    enAuditEntity.Person.ToString(),
+                    person.PersonID,
+                    ipAddress);
+
                 return Ok(person.ToDto());
             }
             catch (SqlException ex)
@@ -219,7 +266,7 @@ namespace ClinicManagementApi.Controllers
         }
 
         [Authorize(Roles = "Admin")]
-        [HttpDelete("{personID}", Name = "DeletePerson")]
+        [HttpDelete("{personID}/Delete", Name = "DeletePerson")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -239,7 +286,21 @@ namespace ClinicManagementApi.Controllers
                         "Failed to delete person.");
                 }
 
-                return Ok("Data Deleted Successfully.");
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Delete.ToString(),
+                    enAuditEntity.Person.ToString(),
+                    personID,
+                    ipAddress);
+
+                return Ok("Person deleted successfully.");
+
             }
             catch (SqlException ex)
             {
@@ -280,7 +341,21 @@ namespace ClinicManagementApi.Controllers
                         "Failed to restore person.");
                 }
 
-                return Ok("Data Restored Successfully.");
+                int actorUserId = int.Parse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+
+                clsAuditLog.LogAction(
+                    actorUserId,
+                    enAuditAction.Restore.ToString(),
+                    enAuditEntity.Person.ToString(),
+                    personID,
+                    ipAddress);
+
+                return Ok("Person restored successfully.");
+
             }
             catch (SqlException ex)
             {
@@ -294,5 +369,6 @@ namespace ClinicManagementApi.Controllers
                 };
             }
         }
+   
     }
 }
