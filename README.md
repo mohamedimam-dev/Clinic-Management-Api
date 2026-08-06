@@ -95,6 +95,33 @@ Data Access Layer
 SQL Server
 ```
 
+## 🚀 Getting Started
+
+### Prerequisites
+
+- .NET 8 SDK
+- SQL Server
+- Visual Studio 2022 or later
+
+### Setup
+
+1. Clone the repository.
+
+```bash
+git clone https://github.com/mohamedimam-dev/Clinic-Management-Api.git
+```
+
+2. Configure the `appsettings.json` file.
+
+3. Create the Clinic Management database.
+
+4. Execute the SQL scripts to create the database objects.
+
+5. Run the project.
+
+6. Open Swagger to test the API.
+
+
 ## 📄 License
 
 This project is for learning and portfolio purposes.
