@@ -81,7 +81,7 @@ namespace ClinicManagementApi.Controllers
         public async Task <ActionResult<GetPrescriptionByIDDTO>> AddPrescription(
            [FromBody] AddPrescriptionDTO prescriptionDto)
         {
-            if (prescriptionDto.MedicalID <= 0 ||
+            if (prescriptionDto == null || prescriptionDto.MedicalID <= 0 ||
                 string.IsNullOrWhiteSpace(prescriptionDto.MedicineName) ||
                 string.IsNullOrWhiteSpace(prescriptionDto.Dosage) ||
                 string.IsNullOrWhiteSpace(prescriptionDto.Frequency))
@@ -189,13 +189,20 @@ namespace ClinicManagementApi.Controllers
            int prescriptionID,
            [FromBody] UpdatePrescriptionDTO prescriptionDto)
         {
-            if (prescriptionID <= 0 ||
+            if (prescriptionID <= 0 || prescriptionDto == null ||
                 string.IsNullOrWhiteSpace(prescriptionDto.MedicineName) ||
                 string.IsNullOrWhiteSpace(prescriptionDto.Dosage) ||
                 string.IsNullOrWhiteSpace(prescriptionDto.Frequency))
             {
                 return BadRequest("Invalid Data.");
             }
+
+            //Rename CreatedByUserID
+            //→ UpdatedByUserID
+            //أو فصلهما إلى
+            //CreatedByUserID وUpdatedByUserID.
+            prescriptionDto.CreatedByUserID = int.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
             prescriptionDto.MedicineName = prescriptionDto.MedicineName.Trim();
             prescriptionDto.Dosage = prescriptionDto.Dosage.Trim();
@@ -239,8 +246,8 @@ namespace ClinicManagementApi.Controllers
             prescription.StartDate = prescriptionDto.StartDate;
             prescription.EndDate = prescriptionDto.EndDate;
             prescription.SpecialInstructions = prescriptionDto.SpecialInstructions;
-        
-
+            prescription.CreatedByUserID = prescriptionDto.CreatedByUserID;
+           
             try
             {
                 if (!prescription.Save())
