@@ -1,4 +1,4 @@
-﻿# 🏥 Clinic Management API
+# 🏥 Clinic Management API
 
 A production-oriented RESTful API for managing clinics, doctors, patients, appointments, medical records, prescriptions, and payments.
 
@@ -120,17 +120,6 @@ git clone https://github.com/mohamedimam-dev/Clinic-Management-Api.git
 5. Run the project.
 
 6. Open Swagger to test the API.
-
-   
-## 🗄 Database
-
-The database creation script is available in:
-
-```text
-Database/ClinicManagementDB.sql
-```
-
-The script includes the database schema and database objects required to run the project.
 
 
 ## 📄 License
