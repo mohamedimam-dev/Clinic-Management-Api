@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+
+  clinic-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: clinic_sql_server
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStrongPassword123!
+    ports: 
+    - "1433:1433" 
+
+    volumes:
+      - sqlserver_data:/var/opt/mssql/data
+
+
+  clinic-api:
+    image: clinic-api-image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clinic_web_api
+    ports: 
+    - "5000:8080" 
+  
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=clinic-db,1433;Database=ClinicDB;User Id=sa;Pssword=YourStrongPassword123!;TrustServerCertificate=True;
+    depends_on:
+      - clinic-db
+
+
+volumes:
+  sqlserver_data:
+    
